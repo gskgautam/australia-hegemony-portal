@@ -47,23 +47,15 @@ python3 -m venv .venv
 mkdir -p accounts
 ```
 
-Create `annotation_app/accounts/apikeys.json`. Git ignores this file, so it is never committed.
-
-```json
-{
-  "FLASK_SECRET_KEY": "<long random string>",
-  "OPENROUTER_API_KEY": "<your OpenRouter key>",
-  "ADMIN_USERNAME": "admin",
-  "ADMIN_PASSWORD_HASH": "<hash of the admin password>",
-  "ANNOTATOR_PASSWORD_HASH": "<hash of the sign-up access code>"
-}
-```
-
-Make the two hashes with:
+Create the keys file. The script asks for the admin password, the annotator sign-up access code and
+the OpenRouter API key (input is hidden), stores only hashes of the passwords, and writes
+`annotation_app/accounts/apikeys.json`, which git ignores:
 
 ```bash
-.venv/bin/python -c "from werkzeug.security import generate_password_hash as h; print(h(input('Password: ')))"
+.venv/bin/python scripts/make_keys.py
 ```
+
+Use a regular OpenRouter API key (not a management key), ideally with a credit limit.
 
 ### Run locally
 
@@ -73,20 +65,46 @@ Make the two hashes with:
 
 Then open http://127.0.0.1:5000. The app can be started from any folder.
 
-### Host it for annotators
+### Host it on PythonAnywhere
 
-Any host that runs a Python (Flask) web app works. On PythonAnywhere:
+Use a paid account (the cheapest plan is enough). Free accounts can only reach an approved list of
+outside sites, which may block the calls to OpenRouter.
 
-1. Use a paid account, because free accounts can only reach an approved list of outside sites.
-2. Clone the repo and create the virtualenv as above.
-3. Upload `accounts/apikeys.json` with the file manager. Don't commit it.
-4. Under *Web*, set the virtualenv path and edit the WSGI file to:
-   ```python
-   import sys
-   sys.path.insert(0, "/home/<your-username>/australia-hegemony-portal/annotation_app")
-   from app import app as application
-   ```
-5. Reload the web app.
+**1. Bash console** (*Consoles → Bash*), run:
+
+```bash
+git clone https://github.com/gskgautam/australia-hegemony-portal.git
+cd australia-hegemony-portal/annotation_app
+python3.12 -m venv ~/.virtualenvs/hegemony
+~/.virtualenvs/hegemony/bin/pip install -r requirements.txt
+~/.virtualenvs/hegemony/bin/python scripts/make_keys.py
+```
+
+**2. Web tab** (*Web → Add a new web app*): choose **Manual configuration** and **Python 3.12**. Then on
+the web app's page:
+
+- **Virtualenv:** `/home/<your-username>/.virtualenvs/hegemony`
+- **WSGI configuration file:** click it and replace its contents with:
+
+  ```python
+  import sys
+  sys.path.insert(0, "/home/<your-username>/australia-hegemony-portal/annotation_app")
+  from app import app as application
+  ```
+
+- **Force HTTPS:** on.
+
+Click **Reload**. The portal is at `https://<your-username>.pythonanywhere.com`. Log in with the
+admin username and password you chose in step 1.
+
+**To update later**, in a Bash console:
+
+```bash
+cd ~/australia-hegemony-portal && git pull
+```
+
+then click **Reload** on the Web tab. Your data in `annotation_app/data/` and the keys file are
+not touched by `git pull`.
 
 If your ethics approval requires data to stay in Australia, use a university server or an Australian
 cloud region instead.
