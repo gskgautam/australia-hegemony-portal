@@ -35,7 +35,7 @@ Create `annotation_app/accounts/apikeys.json`:
 }
 ```
 
-Run it from inside `annotation_app/` (the annotator list `annotators.json` is read from the working directory):
+Run it (it can be started from any folder; all data, including the annotator list `data/annotators.json`, is kept in `annotation_app/data/`, which git ignores):
 
 ```bash
 .venv/bin/python app.py

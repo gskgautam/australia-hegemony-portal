@@ -15,7 +15,7 @@ PROMPT_SIM_THRESHOLD = 0.65
 PROMPT_SIM_NEAR_DUP_THRESHOLD = 0.9
 PROMPT_SIM_MIN_CHARS = 40
 PROMPT_SIM_TOP_K = 5
-PROMPT_EMBEDDING_INDEX_PATH = "annotation_app/data/prompt_embeddings.json"
+PROMPT_EMBEDDING_INDEX_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "prompt_embeddings.json")
 
 
 def _ensure_index_dir():

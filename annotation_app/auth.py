@@ -3,11 +3,13 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from datetime import datetime
 import json
 import os
-from config import KEYS, REGION_STATE_MAP
+from config import BASE_DIR, KEYS, REGION_STATE_MAP
 
 auth_bp = Blueprint("auth", __name__)
 
-ANNOTATORS_FILE = "annotators.json"
+# Fixed location next to the other data files, independent of the folder the app starts in.
+# Holds annotators' personal details: git-ignored, never commit it.
+ANNOTATORS_FILE = BASE_DIR / "data" / "annotators.json"
 
 
 # =========================
@@ -22,6 +24,7 @@ def load_annotators():
 
 
 def save_annotators(data):
+    ANNOTATORS_FILE.parent.mkdir(parents=True, exist_ok=True)
     with open(ANNOTATORS_FILE, "w") as f:
         json.dump(data, f, indent=2)
 
