@@ -154,7 +154,7 @@ Back up this folder regularly. **Never commit it**, because the repository is pu
 
 - Confirm the OpenRouter model IDs with a real key, especially `qwen/qwen3.8-27b`.
 - Export in the consortium's upload format once the updated `dataset_format.json` is published.
-- The portal follows the consortium's (India team's) workflow. The Australian guidelines document also
+- The portal follows the consortium's shared workflow. The Australian guidelines document also
   describes steps the portal does not have: expert approval of prompts before generation, blind
   labelling by both teammates, a "Needs review" flag and per-axis confidence. Either run those outside
   the portal or align the guidelines with the portal.
