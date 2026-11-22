@@ -85,7 +85,7 @@ def signup():
             "state": state,
             "region": region,
             "age_group": request.form["age_group"],
-            "gender": request.form["gender"],
+            "gender": request.form.get("gender", "").strip(),
             "education_level": request.form["education_level"],
             "field_of_study": request.form["field_of_study"],
             "social_theory_training": request.form["social_theory_training"],

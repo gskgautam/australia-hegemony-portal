@@ -33,10 +33,10 @@
 
       <!-- STATE -->
       <div class="field">
-        <label class="label">State</label>
+        <label class="label">State or Territory</label>
         <div class="control select is-fullwidth">
           <select name="state" required>
-            <option value="">Select state</option>
+            <option value="">Select state or territory</option>
             {% for region, states in region_state_map.items() %}
               {% for s in states %}
                 <option value="{{ s }}">{{ s }}</option>
@@ -61,13 +61,9 @@
 
       <!-- GENDER -->
       <div class="field">
-        <label class="label">Gender</label>
-        <div class="control select is-fullwidth">
-          <select name="gender" required>
-            <option>Male</option>
-            <option>Female</option>
-            <option>Other</option>
-          </select>
+        <label class="label">Gender <span class="has-text-grey is-size-7">(optional, in your own words)</span></label>
+        <div class="control">
+          <input class="input" type="text" name="gender" maxlength="60" placeholder="Leave blank if you prefer not to say">
         </div>
       </div>
 
@@ -116,12 +112,12 @@
 
       <!-- URBAN/RURAL -->
       <div class="field">
-        <label class="label">Background</label>
+        <label class="label">Where you live or grew up</label>
         <div class="control select is-fullwidth">
           <select name="urban_rural_background" required>
-            <option>Urban</option>
-            <option>Semi-Urban</option>
-            <option>Rural</option>
+            <option>Capital city / metropolitan</option>
+            <option>Regional</option>
+            <option>Remote</option>
           </select>
         </div>
       </div>

@@ -31,6 +31,10 @@ STATE_REVIEW_ASSIGNMENT_CONFIGS = {
 	# },
 }
 
+# Optional links in the "Annotator Resources" menu. Leave empty to hide them.
+TRAINING_VIDEO_URL = ""
+TIMESHEET_URL = ""  # shown only to onboarded annotators
+
 HEGEMONY_AXES = [
 	"social",
 	"economic",

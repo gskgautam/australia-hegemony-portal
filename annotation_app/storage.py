@@ -1,9 +1,8 @@
 """
 Annotation storage.
 
-The India portal kept records in a local JSONL file mirrored to Google Sheets.
-The consortium asked teams to use an SQL database instead (#faqs, 19 Oct 2026),
-so records now live in one SQLite table. Each row keeps the full record as JSON,
+Records live in one SQLite table, as the consortium recommends an SQL database
+(#faqs, 19 Oct 2026). Each row keeps the full record as JSON,
 plus a few indexed columns for filtering.
 """
 

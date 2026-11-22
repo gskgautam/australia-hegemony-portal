@@ -48,7 +48,6 @@ initialize_storage()
 # Leave empty to use automatic latest-complete sampling.
 EXAMPLE_ANNOTATION_IDS = []
 
-IAR_GUIDELINES_FILENAME = "Inter-Annotator-Review-Guidelines.pdf"
 IAR_ASSIGNMENTS_FILENAME = "inter_annotator_review_assignments.json"
 
 
@@ -90,6 +89,8 @@ def inject_template_flags():
     username = user.get("username")
     return {
         "models_config": MODELS,
+        "training_video_url": TRAINING_VIDEO_URL,
+        "timesheet_url": TIMESHEET_URL,
         "prompt_types": PROMPT_TYPES,
         "show_timesheet_link": _normalize_username(username) in ONBOARDED_ANNOTATOR_SET,
         "show_inter_annotator_review_link": _can_access_inter_annotator_review(user),
@@ -113,10 +114,9 @@ def admin_required(f):
     return wrapper
 
 
-@app.route("/inter-annotator-review-guidelines.pdf")
-@login_required
-def inter_annotator_review_guidelines_pdf():
-    return send_from_directory(BASE_DIR / "static", IAR_GUIDELINES_FILENAME)
+@app.route("/guidelines")
+def guidelines():
+    return render_template("guidelines.html")
 
 
 def _safe_upsert_prompt_embedding(record):
