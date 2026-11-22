@@ -77,15 +77,6 @@ with open(API_KEYS_PATH, "r") as f:
 	KEYS = json.load(f)
 
 
-# Context recorded with each prompt (handbook section 3), checked by the cultural expert
-# before any model answers are generated.
-PROMPT_DETAIL_FIELDS = ["slot_id", "locality", "setting", "topic", "rationale", "source"]
-PROMPT_SETTINGS = ["Capital city / metropolitan", "Regional", "Remote"]
-
-# Prompt approval states: not_submitted -> pending -> approved | returned | rejected.
-PROMPT_STATUSES = ["not_submitted", "pending", "approved", "returned", "rejected"]
-
-
 def _model_headers():
 	headers = []
 	for model_key in MODEL_KEYS:
@@ -106,9 +97,6 @@ HEADERS = [
 	"region",
 	"state",
 	"base_prompt",
-	*[f"prompt_{field}" for field in PROMPT_DETAIL_FIELDS],
-	"prompt_status",
-	"prompt_review_comment",
 	*_model_headers(),
 	"ground_truth",
 	"references",

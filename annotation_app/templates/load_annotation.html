@@ -204,13 +204,6 @@
                   {% else %}
                     <span class="tag is-warning is-light status-tag">Draft</span>
                   {% endif %}
-                  {% set ps = (r.prompt_review or {}).status or "not_submitted" %}
-                  <div class="mt-1">
-                    <span class="tag is-light status-tag
-                      {% if ps == 'approved' %}is-success{% elif ps == 'pending' %}is-info{% elif ps in ['returned', 'rejected'] %}is-danger{% endif %}">
-                      Prompt: {{ {"approved": "approved", "pending": "waiting", "returned": "returned", "rejected": "rejected"}.get(ps, "not submitted") }}
-                    </span>
-                  </div>
                 </td>
 
                 <td>

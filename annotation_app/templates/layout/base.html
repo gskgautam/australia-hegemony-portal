@@ -577,13 +577,6 @@
             href="{{ url_for('admin') }}">
             Admin
         </a>
-        <a class="navbar-item nav-link nav-admin
-            {% if request.endpoint == 'admin_prompt_queue' %}
-                nav-active-admin
-            {% endif %}"
-            href="{{ url_for('admin_prompt_queue') }}">
-            Prompt Approvals
-        </a>
         {% endif %}
 
         </div>
