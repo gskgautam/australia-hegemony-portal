@@ -24,7 +24,8 @@ Open the portal link your coordinator sends you, then:
 3. On **Annotate**: write your question, click **Check Similarity**, then **Generate** once for each
    model. Label every answer on all six axes, flag hallucinations, and write the Ground Truth.
 4. Click **Review Annotation**, then **Confirm & Submit**. Expert feedback appears on your **Load** page.
-5. When items are assigned to you, review your teammates' work under **Review**.
+5. When items are assigned to you, review your teammates' work under **Review**. First label each
+   answer yourself without seeing their labels (these lock), then score their work.
 
 Use **Save Draft** at any time. Never regenerate an answer to get a "better" one.
 
@@ -98,7 +99,8 @@ All settings are in `annotation_app/config.py`.
 | Setting | What to put there |
 |---|---|
 | `ONBOARDED_ANNOTATOR_USERNAMES_STATES` | Each annotator's username and their state or territory |
-| `STATE_REVIEW_ASSIGNMENT_CONFIGS` | For each jurisdiction: its 3 annotators and how many items each reviews |
+| `STATE_REVIEW_ASSIGNMENT_CONFIGS` | For each jurisdiction: its 3 annotators, and how many of each one's accepted items go to peer review (set ≥ the number they write to review all) |
+| `REVIEWERS_PER_ITEM` | How many teammates review each item; 2 means both, which agreement needs |
 | `TRAINING_VIDEO_URL`, `TIMESHEET_URL` | Optional menu links; leave empty to hide them |
 | `MODELS` | The four models and their OpenRouter IDs |
 
@@ -118,7 +120,7 @@ Everything is kept in `annotation_app/data/`, which git ignores:
 | File | Contents |
 |---|---|
 | `annotations.db` | All annotation items (SQLite) |
-| `iaa_reviews.db` | Peer-review scores |
+| `iaa_reviews.db` | Peer-review scores and reviewers' locked blind labels |
 | `annotators.json` | Annotator accounts and sign-up details (personal data) |
 | `prompt_embeddings.json` | Index used by *Check Similarity* |
 | `drafts/` | Unsubmitted drafts and saved notes |
@@ -129,6 +131,17 @@ Back up this folder regularly. **Never commit it**, because the repository is pu
 
 - *Admin → Download CSV*: all items, one row each
 - `/admin/iaa-reviews.csv`: all peer-review scores
+- `/admin/iaa-blind-labels.csv`: every label from the author and both blind reviewers, one row per
+  answer × decision × rater, ready for agreement analysis
+
+### Agreement
+
+*Admin → Agreement (κ)* shows, for each axis and for hallucination, the number of units, Yes prevalence,
+raw agreement and Fleiss' κ. It can be filtered by state or territory, and has two tables:
+
+- **Two reviewers (fully blind):** the cleanest measure, since neither reviewer saw anyone else's labels.
+- **Author + two reviewers:** all three raters, but the author's labels are the accepted version and may
+  already reflect expert feedback.
 
 ---
 
@@ -138,9 +151,11 @@ Back up this folder regularly. **Never commit it**, because the repository is pu
 - Export in the consortium's upload format once the updated `dataset_format.json` is published.
 - Not yet in the portal, though the Australian guidelines include them:
   - expert approval of a prompt *before* answers are generated;
-  - reviewers labelling blind before they see the author's labels;
+  - prompt details (prompt ID, locality, topic, why it matters, source);
   - a "Needs review" flag;
-  - per-axis confidence scores.
+  - per-axis confidence scores;
+  - separate logins for cultural experts, limited to their own state or territory;
+  - the remaining annotator details (languages, years of connection, consent date), kept under a code number.
 
 ---
 

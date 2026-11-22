@@ -13,6 +13,7 @@ from draft_store import *
 from datetime import datetime
 import uuid
 from collections import Counter, defaultdict
+from agreement import agreement_summary, long_format_rows
 from prompt_similarity import (
     PROMPT_SIM_THRESHOLD,
     PROMPT_SIM_TOP_K,
@@ -32,6 +33,11 @@ from iaa_store import (
     list_completed_iaa_review_counts_by_state_and_reviewer,
     list_iaa_reviews_for_export,
     save_iaa_review,
+    BLIND_LABEL_FIELDS,
+    fetch_blind_labels,
+    has_blind_labels,
+    list_blind_labels_for_export,
+    save_blind_labels,
 )
 import csv
 import io
@@ -376,17 +382,14 @@ def _build_seeded_state_review_assignments(records, state_name):
         if not other_reviewer_keys or not selected_records:
             continue
 
-        if len(other_reviewer_keys) == 1:
-            assignments[other_reviewer_keys[0]].extend(selected_records)
-            continue
-
-        base_chunk_size, remainder = divmod(len(selected_records), len(other_reviewer_keys))
-        start_idx = 0
-        for idx, reviewer_key in enumerate(other_reviewer_keys):
-            extra = 1 if idx < remainder else 0
-            end_idx = start_idx + base_chunk_size + extra
-            assignments[reviewer_key].extend(selected_records[start_idx:end_idx])
-            start_idx = end_idx
+        # Each selected item goes to REVIEWERS_PER_ITEM of the creator's teammates.
+        # With 3 annotators and REVIEWERS_PER_ITEM = 2, both teammates review every item,
+        # which is what per-axis agreement (Fleiss' kappa) needs.
+        reviewers_per_item = max(1, min(REVIEWERS_PER_ITEM, len(other_reviewer_keys)))
+        for idx, record in enumerate(selected_records):
+            for offset in range(reviewers_per_item):
+                reviewer_key = other_reviewer_keys[(idx + offset) % len(other_reviewer_keys)]
+                assignments[reviewer_key].append(record)
 
     for reviewer_key, assigned_records in list(assignments.items()):
         assignments[reviewer_key] = _dedupe_records_by_id(_sorted_records_for_sampling(assigned_records))
@@ -1019,11 +1022,11 @@ def prompt_review():
     )
 
 
-@app.route("/review/<annotation_id>")
-@login_required
-def review_annotation(annotation_id):
-    user = session["user"]
-
+def _assigned_review_record_or_response(annotation_id, user):
+    """
+    Return (record, None) if this user may peer-review the item,
+    otherwise (None, response) with the redirect or abort to return.
+    """
     if not _can_access_inter_annotator_review(user):
         abort(403)
 
@@ -1034,28 +1037,92 @@ def review_annotation(annotation_id):
         abort(404)
 
     if not _is_iaa_approved_record(record):
-        return redirect(url_for("prompt_review", info="Only approved annotations are eligible for IAA review."))
+        return None, redirect(url_for("prompt_review", info="Only approved annotations are eligible for IAA review."))
 
-    assigned_reviewable_records = _reviewable_records_for_user(records, user)
     assigned_ids = {
         str((assigned_record or {}).get("id") or "").strip()
-        for assigned_record in assigned_reviewable_records
+        for assigned_record in _reviewable_records_for_user(records, user)
     }
     if str(record.get("id") or "").strip() not in assigned_ids:
         abort(403)
 
     existing_review = fetch_iaa_review(annotation_id, user["username"])
     if existing_review and existing_review.get("completed") and not existing_review.get("editable"):
-        return redirect(url_for("prompt_review", info="You have already reviewed this annotation"))
+        return None, redirect(url_for("prompt_review", info="You have already reviewed this annotation"))
 
-    models = [(m["key"], m["label"]) for m in MODELS]
+    return record, None
 
+
+def _render_blind_labelling(record, error=None, submitted=None):
+    return render_template(
+        "review_blind.html",
+        record=record,
+        models=[(m["key"], m["label"]) for m in MODELS],
+        blind_fields=BLIND_LABEL_FIELDS,
+        error=error,
+        submitted=submitted,
+    )
+
+
+@app.route("/review/<annotation_id>")
+@login_required
+def review_annotation(annotation_id):
+    user = session["user"]
+    record, response = _assigned_review_record_or_response(annotation_id, user)
+    if response:
+        return response
+
+    # Step 1: the reviewer labels every answer blind before seeing the author's work.
+    if not has_blind_labels(annotation_id, user["username"]):
+        return _render_blind_labelling(record)
+
+    # Step 2: author's labels, reasons and Ground Truth are revealed for scoring.
+    existing_review = fetch_iaa_review(annotation_id, user["username"])
     return render_template(
         "review_annotation.html",
         record=record,
-        models=models,
+        models=[(m["key"], m["label"]) for m in MODELS],
         existing_review=_iaa_review_to_form_values(existing_review),
+        blind_labels=fetch_blind_labels(annotation_id, user["username"]),
     )
+
+
+@app.route("/review/<annotation_id>/blind", methods=["POST"])
+@login_required
+def submit_blind_labels(annotation_id):
+    user = session["user"]
+    record, response = _assigned_review_record_or_response(annotation_id, user)
+    if response:
+        return response
+
+    if has_blind_labels(annotation_id, user["username"]):
+        return redirect(url_for("review_annotation", annotation_id=annotation_id))
+
+    labels = {}
+    missing = 0
+    for m in MODELS:
+        for kind in PROMPT_TYPES:
+            values = {}
+            for field in BLIND_LABEL_FIELDS:
+                value = (request.form.get(f"blind_{m['key']}_{kind}_{field}") or "").strip().lower()
+                if value not in ("yes", "no"):
+                    missing += 1
+                values[field] = value
+            labels.setdefault(m["key"], {})[kind] = values
+
+    if missing:
+        return _render_blind_labelling(
+            record,
+            error=f"Please answer every decision before continuing ({missing} left).",
+            submitted=request.form,
+        ), 400
+
+    try:
+        save_blind_labels(annotation_id, user["username"], user.get("state", ""), labels)
+    except PermissionError:
+        pass  # already locked by an earlier submission; continue to step 2
+
+    return redirect(url_for("review_annotation", annotation_id=annotation_id))
 
 
 @app.route("/submit_review", methods=["POST"])
@@ -1087,6 +1154,9 @@ def submit_review():
 
     if user.get("role") == "admin" and record.get("annotator_name") == user.get("username"):
         abort(403)
+
+    if not has_blind_labels(annotation_id, user["username"]):
+        return redirect(url_for("review_annotation", annotation_id=annotation_id))
 
     try:
         save_iaa_review(_build_iaa_review_payload(request.form, user, record))
@@ -1451,6 +1521,43 @@ def export_iaa_reviews_csv():
         csv_data,
         mimetype="text/csv",
         headers={"Content-Disposition": "attachment; filename=iaa_reviews.csv"},
+    )
+
+
+AGREEMENT_FIELDS = BLIND_LABEL_FIELDS
+AGREEMENT_CSV_COLUMNS = ["annotation_id", "state", "model_key", "model_label", "prompt_type",
+                         "decision", "rater", "rater_role", "label"]
+
+
+@app.route("/admin/iaa-blind-labels.csv")
+@admin_required
+def export_blind_labels_csv():
+    rows = long_format_rows(load_records(), list_blind_labels_for_export(), AGREEMENT_FIELDS)
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=AGREEMENT_CSV_COLUMNS)
+    writer.writeheader()
+    writer.writerows(rows)
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=iaa_blind_labels_long.csv"},
+    )
+
+
+@app.route("/admin/agreement")
+@admin_required
+def admin_agreement():
+    rows = long_format_rows(load_records(), list_blind_labels_for_export(), AGREEMENT_FIELDS)
+    state = (request.args.get("state") or "").strip()
+    if state:
+        rows = [r for r in rows if r["state"] == state]
+    reviewer_rows = [r for r in rows if r["rater_role"] == "reviewer"]
+    return render_template(
+        "admin_agreement.html",
+        state=state,
+        states=[s for states in REGION_STATE_MAP.values() for s in states],
+        with_author=agreement_summary(rows, AGREEMENT_FIELDS, min_raters=3),
+        reviewers_only=agreement_summary(reviewer_rows, AGREEMENT_FIELDS, min_raters=2),
     )
 
 

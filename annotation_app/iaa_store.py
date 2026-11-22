@@ -1,7 +1,9 @@
 import sqlite3
 from pathlib import Path
 
-from config import BASE_DIR, MODELS, PROMPT_TYPES
+from datetime import datetime
+
+from config import BASE_DIR, HEGEMONY_AXES, MODELS, PROMPT_TYPES
 
 
 IAA_DB_PATH = Path(BASE_DIR) / "data" / "iaa_reviews.db"
@@ -119,7 +121,105 @@ def _ensure_schema(conn):
         if column in existing_columns:
             continue
         conn.execute(f"ALTER TABLE iaa_reviews ADD COLUMN {column} {_column_type(column)}")
+    _ensure_blind_label_schema(conn)
     conn.commit()
+
+
+# =====================================================
+# BLIND LABELS
+# Before seeing the author's labels, each peer reviewer gives their own
+# Yes/No label on every axis plus a hallucination decision for every model
+# answer. These independent labels are what inter-annotator agreement
+# (Cohen's / Fleiss' kappa) is computed from. Rows are write-once.
+# =====================================================
+
+BLIND_LABEL_FIELDS = ["hallucination", *HEGEMONY_AXES]
+
+
+def _ensure_blind_label_schema(conn):
+    label_columns = ",\n            ".join(
+        f"{field} TEXT NOT NULL CHECK ({field} IN ('yes', 'no'))" for field in BLIND_LABEL_FIELDS
+    )
+    conn.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS iaa_blind_labels (
+            label_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            annotation_id TEXT NOT NULL,
+            reviewer_name TEXT NOT NULL,
+            reviewer_state TEXT,
+            model_key TEXT NOT NULL,
+            prompt_type TEXT NOT NULL DEFAULT 'base',
+            {label_columns},
+            created_at TEXT NOT NULL,
+            UNIQUE(annotation_id, reviewer_name, model_key, prompt_type)
+        )
+        """
+    )
+
+
+def fetch_blind_labels(annotation_id, reviewer_name):
+    """{model_key: {kind: {field: 'yes'|'no'}}} for one reviewer, or {} if none yet."""
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM iaa_blind_labels WHERE annotation_id = ? AND reviewer_name = ?",
+            (annotation_id, reviewer_name),
+        ).fetchall()
+    labels = {}
+    for row in rows:
+        labels.setdefault(row["model_key"], {})[row["prompt_type"]] = {
+            field: row[field] for field in BLIND_LABEL_FIELDS
+        }
+    return labels
+
+
+def has_blind_labels(annotation_id, reviewer_name):
+    expected = len(MODELS) * len(PROMPT_TYPES)
+    with _connect() as conn:
+        count = conn.execute(
+            "SELECT COUNT(*) FROM iaa_blind_labels WHERE annotation_id = ? AND reviewer_name = ?",
+            (annotation_id, reviewer_name),
+        ).fetchone()[0]
+    return count >= expected
+
+
+def save_blind_labels(annotation_id, reviewer_name, reviewer_state, labels):
+    """
+    labels: {model_key: {kind: {field: 'yes'|'no'}}} covering every model and prompt type.
+    Raises PermissionError if this reviewer already labelled this item (labels are write-once).
+    """
+    rows = []
+    for m in MODELS:
+        for kind in PROMPT_TYPES:
+            values = labels[m["key"]][kind]
+            if any(values.get(field) not in ("yes", "no") for field in BLIND_LABEL_FIELDS):
+                raise ValueError(f"Incomplete blind labels for {m['key']} {kind}.")
+            rows.append((
+                annotation_id, reviewer_name, reviewer_state, m["key"], kind,
+                *[values[field] for field in BLIND_LABEL_FIELDS],
+                datetime.utcnow().isoformat(),
+            ))
+
+    placeholders = ", ".join("?" for _ in rows[0])
+    columns = ", ".join(
+        ["annotation_id", "reviewer_name", "reviewer_state", "model_key", "prompt_type",
+         *BLIND_LABEL_FIELDS, "created_at"]
+    )
+    with _connect() as conn:
+        if conn.execute(
+            "SELECT 1 FROM iaa_blind_labels WHERE annotation_id = ? AND reviewer_name = ? LIMIT 1",
+            (annotation_id, reviewer_name),
+        ).fetchone():
+            raise PermissionError("Blind labels already submitted for this item.")
+        conn.executemany(f"INSERT INTO iaa_blind_labels ({columns}) VALUES ({placeholders})", rows)
+        conn.commit()
+
+
+def list_blind_labels_for_export():
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM iaa_blind_labels ORDER BY annotation_id, model_key, reviewer_name"
+        ).fetchall()
+    return [dict(row) for row in rows]
 
 
 def initialize_iaa_storage():

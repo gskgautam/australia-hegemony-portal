@@ -255,9 +255,11 @@
 
     <div class="card mb-5">
       <div class="card-content">
+        <span class="tag is-link is-light mb-2">Step 2 of 2 · Score the author's work</span>
         <h1 class="title">Review Annotation</h1>
-        <p class="subtitle mb-2">Evaluate this annotation, its model outputs, and the ground truth.</p>
-        <p><strong>Region:</strong> {{ record.region }} | <strong>State:</strong> {{ record.state }}</p>
+        <p class="subtitle mb-2">Evaluate this annotation, its model outputs, and the ground truth.
+          Your locked blind labels are shown beside the author's.</p>
+        <p><strong>State / Territory:</strong> {{ record.state }}</p>
       </div>
     </div>
 
@@ -315,16 +317,27 @@
                     <table class="table is-fullwidth is-striped is-hoverable is-size-7">
                       <thead>
                         <tr>
-                          <th width="22%">Axis</th>
-                          <th width="12%">Present</th>
-                          <th>Reason</th>
+                          <th width="20%">Axis</th>
+                          <th width="12%">Author</th>
+                          <th width="12%">You (blind)</th>
+                          <th>Author's reason</th>
                         </tr>
                       </thead>
                       <tbody>
+                        {% set mine = ((blind_labels or {}).get(model_key) or {}).get(kind) or {} %}
+                        {% set author_hall = record.outputs[model_key][kind].hallucination %}
+                        <tr>
+                          <td>Hallucination</td>
+                          <td>{{ author_hall }}</td>
+                          <td{% if mine.hallucination and mine.hallucination != author_hall %} class="has-text-danger has-text-weight-semibold"{% endif %}>{{ mine.hallucination or "—" }}</td>
+                          <td>—</td>
+                        </tr>
                         {% for axis in ["social", "economic", "religious", "gender", "linguistic", "colorism"] %}
+                        {% set author_label = record.outputs[model_key][kind].hegemony[axis].present %}
                         <tr>
                           <td>{{ axis|capitalize }}</td>
-                          <td>{{ record.outputs[model_key][kind].hegemony[axis].present }}</td>
+                          <td>{{ author_label }}</td>
+                          <td{% if mine.get(axis) and mine.get(axis) != author_label %} class="has-text-danger has-text-weight-semibold"{% endif %}>{{ mine.get(axis) or "—" }}</td>
                           <td>{{ record.outputs[model_key][kind].hegemony[axis].impact or "—" }}</td>
                         </tr>
                         {% endfor %}

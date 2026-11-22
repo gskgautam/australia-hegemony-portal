@@ -1,0 +1,127 @@
+{% extends "layout/base.html" %}
+
+{% block title %}
+Blind Labelling – Peer Review
+{% endblock %}
+
+{% block styles %}
+{{ super() }}
+<style>
+  .blind-step {
+    display: inline-block;
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    padding: 0.2rem 0.6rem;
+    border-radius: 999px;
+    background: #eef3ff;
+    color: #2b4a9b;
+    margin-bottom: 0.5rem;
+  }
+  .blind-table td, .blind-table th { vertical-align: middle; }
+  .blind-table .radio + .radio { margin-left: 1.25rem; }
+  .blind-table tr.is-missing { background: #fff4f4; }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="section pt-1">
+  <div class="container">
+
+    <div class="card mb-5">
+      <div class="card-content">
+        <span class="blind-step">Step 1 of 2 · Blind labelling</span>
+        <h1 class="title">Label this item yourself first</h1>
+        <p class="subtitle mb-3">
+          {{ record.state }}
+        </p>
+        <div class="content">
+          <p>
+            Before you see your teammate's labels, give your own <strong>Yes/No</strong> on each axis and
+            decide on hallucination for every answer. Use the same rule as when annotating: Yes only if
+            you can point to the privileged norm, the words that make it the default, and the
+            alternative that is pushed aside (<a href="{{ url_for('references') }}" target="_blank">References</a>).
+          </p>
+          <p class="has-text-danger-dark">
+            <strong>Your labels lock when you continue</strong> and cannot be changed after you see the
+            author's work. These labels are used to measure agreement between annotators.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    {% if error %}
+      <div class="notification is-danger is-light">{{ error }}</div>
+    {% endif %}
+
+    <div class="card mb-5">
+      <div class="card-content">
+        <h2 class="title is-5">Prompt</h2>
+        <pre class="wrapped-pre">{{ record.prompts.base }}</pre>
+      </div>
+    </div>
+
+    <form method="POST" action="{{ url_for('submit_blind_labels', annotation_id=record.id) }}" id="blind_form">
+      {% for model_key, model_label in models %}
+        {% for kind in prompt_types %}
+        {% set prefix = "blind_" ~ model_key ~ "_" ~ kind %}
+        {% set previous = (submitted or {}) %}
+        <div class="card mb-5">
+          <div class="card-content">
+            <h2 class="title is-4">{{ model_label }}</h2>
+            <div class="markdown-output is-compact mb-4" data-markdown-static>{{- record.outputs[model_key][kind].text -}}</div>
+
+            <table class="table is-fullwidth is-size-7 blind-table">
+              <thead>
+                <tr><th width="35%">Decision</th><th>Your label</th></tr>
+              </thead>
+              <tbody>
+                {% for field in blind_fields %}
+                {% set name = prefix ~ "_" ~ field %}
+                <tr data-field="{{ name }}">
+                  <th>{{ "Contains hallucination" if field == "hallucination" else (field|capitalize) ~ " hegemony" }}</th>
+                  <td>
+                    <label class="radio">
+                      <input type="radio" name="{{ name }}" value="yes" required {% if previous.get(name) == "yes" %}checked{% endif %}> Yes
+                    </label>
+                    <label class="radio">
+                      <input type="radio" name="{{ name }}" value="no" required {% if previous.get(name) == "no" %}checked{% endif %}> No
+                    </label>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        {% endfor %}
+      {% endfor %}
+
+      <div class="field has-text-right mb-6">
+        <button class="button is-link is-medium" type="submit">
+          Lock my labels and continue to the author's work →
+        </button>
+      </div>
+    </form>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById("blind_form").addEventListener("submit", function (event) {
+  const rows = Array.from(document.querySelectorAll("tr[data-field]"));
+  const missing = rows.filter((row) => !row.querySelector("input:checked"));
+  rows.forEach((row) => row.classList.toggle("is-missing", missing.includes(row)));
+  if (missing.length) {
+    event.preventDefault();
+    missing[0].scrollIntoView({ behavior: "smooth", block: "center" });
+    alert(`Please answer all decisions (${missing.length} left).`);
+    return;
+  }
+  if (!confirm("Lock your labels? You won't be able to change them after you see the author's work.")) {
+    event.preventDefault();
+  }
+});
+</script>
+{% endblock %}
