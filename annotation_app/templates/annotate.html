@@ -222,6 +222,64 @@
                   <div id="similarity_results" class="notification is-light is-hidden mt-3"></div>
                 </div>
 
+                <div class="column">
+                  {% set pr_status = prompt_review.status or "not_submitted" %}
+                  {% set pd = (draft.prompt_details if draft and draft.prompt_details else {}) %}
+                  <label class="label">Prompt details <span class="has-text-grey is-size-7">(checked by your cultural expert)</span></label>
+                  <div class="columns is-multiline is-variable is-2">
+                    <div class="column is-half">
+                      <input class="input is-small" name="prompt_slot_id" placeholder="Slot ID (e.g. NSW-SOC-03)" value="{{ pd.slot_id or '' }}">
+                    </div>
+                    <div class="column is-half">
+                      <input class="input is-small" name="prompt_locality" placeholder="Locality (e.g. Western Sydney)" value="{{ pd.locality or '' }}">
+                    </div>
+                    <div class="column is-half">
+                      <div class="select is-small is-fullwidth">
+                        <select name="prompt_setting">
+                          <option value="">Setting…</option>
+                          {% for option in prompt_settings %}
+                            <option {% if pd.setting == option %}selected{% endif %}>{{ option }}</option>
+                          {% endfor %}
+                        </select>
+                      </div>
+                    </div>
+                    <div class="column is-half">
+                      <input class="input is-small" name="prompt_topic" placeholder="Main topic (e.g. celebrations)" value="{{ pd.topic or '' }}">
+                    </div>
+                    <div class="column is-full">
+                      <textarea class="textarea is-small" name="prompt_rationale" rows="2" placeholder="Why this matters locally (two sentences)">{{ pd.rationale or '' }}</textarea>
+                    </div>
+                    <div class="column is-full">
+                      <textarea class="textarea is-small" name="prompt_source" rows="2" placeholder="Source: title, organisation, URL, access date, section">{{ pd.source or '' }}</textarea>
+                    </div>
+                  </div>
+
+                  <div id="prompt_status_box"
+                       class="notification is-light p-3 mb-2
+                              {% if pr_status == 'approved' %}is-success{% elif pr_status == 'pending' %}is-info{% elif pr_status in ['returned', 'rejected'] %}is-danger{% else %}is-warning{% endif %}"
+                       data-status="{{ pr_status }}"
+                       data-approved-prompt="{{ prompt_review.prompt or '' }}">
+                    <strong>Prompt status:</strong>
+                    {% if pr_status == "approved" %}Approved. You can generate the answers.
+                    {% elif pr_status == "pending" %}Waiting for your cultural expert.
+                    {% elif pr_status == "returned" %}Returned for changes. Edit and resubmit.
+                    {% elif pr_status == "rejected" %}Rejected. Start a new annotation for this slot.
+                    {% else %}Not submitted yet.{% endif %}
+                    {% if prompt_review.comment %}
+                      <div class="mt-1"><em>Expert:</em> {{ prompt_review.comment }}</div>
+                    {% endif %}
+                    <div id="prompt_changed_warning" class="mt-1 has-text-danger is-hidden">
+                      You changed the prompt after approval. It must be approved again before generating.
+                    </div>
+                  </div>
+
+                  {% if pr_status in ["not_submitted", "returned"] %}
+                  <button type="button" id="submit_prompt_btn" class="button is-link" onclick="submitPromptForApproval()">
+                    Submit prompt for approval
+                  </button>
+                  {% endif %}
+                </div>
+
               </div>
 
             </div>
@@ -251,7 +309,8 @@
                       <div class="card-content">
                         <button id="{{ m.key }}_{{ kind }}_generate_btn"
                                 type="button"
-                                class="button is-dark mb-3"
+                                class="button is-dark mb-3 generate-btn"
+                                {% if pr_status != "approved" %}disabled title="Generate unlocks once your prompt is approved"{% endif %}
                                 onclick="generateOutput('{{ m.js }}','{{ kind }}')">
                           Generate
                         </button>

@@ -655,6 +655,30 @@ def _build_iaa_review_payload(form, user, record):
     return payload
 
 
+PROMPT_CHANGED_NOTE = "The prompt was edited after it was submitted, so it needs approval again."
+
+
+def _base_prompt_text(record):
+    return str(((record or {}).get("prompts") or {}).get("base") or "").strip()
+
+
+def _carry_prompt_review(record, existing_record):
+    """
+    Keep the expert's prompt decision from the stored record. Only the expert routes change it.
+    If the prompt text no longer matches what was submitted or approved, approval is withdrawn.
+    """
+    review = dict((existing_record or {}).get("prompt_review") or {"status": "not_submitted"})
+    if review.get("status") in ("pending", "approved") and _base_prompt_text(record) != str(review.get("prompt") or "").strip():
+        review = {"status": "not_submitted", "comment": PROMPT_CHANGED_NOTE}
+    record["prompt_review"] = review
+    return record
+
+
+def _prompt_is_approved_for(record, prompt_text):
+    review = (record or {}).get("prompt_review") or {}
+    return review.get("status") == "approved" and str(review.get("prompt") or "").strip() == str(prompt_text or "").strip()
+
+
 def _persist_annotation_record(record, editing_id=None):
     """
     Persist annotation exactly like confirm flow.
@@ -671,6 +695,7 @@ def _persist_annotation_record(record, editing_id=None):
                 ["expert_reviews", "isAccept", "annotator_addressed"],
             )
             record["id"] = editing_id
+            _carry_prompt_review(record, existing_record)
             save_record(record)
             _safe_upsert_prompt_embedding(record)
             return editing_id, "updated"
@@ -843,13 +868,63 @@ def annotate():
     draft_id = session.get("draft_id")
     draft = load_draft(draft_id) if draft_id else None
 
+    editing_id = session.get("editing_id", "")
+    stored = next((r for r in load_records() if r.get("id") == editing_id), None) if editing_id else None
+    prompt_review = (stored or {}).get("prompt_review") or {"status": "not_submitted"}
+
     return render_template(
         "annotate.html",
         region_state_map=REGION_STATE_MAP,
         draft=draft,
         user=session.get("user"),
-        current_annotation_id=session.get("editing_id", "")
+        current_annotation_id=editing_id,
+        prompt_review=prompt_review,
+        prompt_detail_fields=PROMPT_DETAIL_FIELDS,
+        prompt_settings=PROMPT_SETTINGS,
     )
+
+
+@app.route("/prompt/submit", methods=["POST"])
+@login_required
+def submit_prompt_for_approval():
+    user = session["user"]
+    record = build_record(request.form)
+
+    missing = [
+        label for field, label in [
+            ("base_prompt", "prompt"),
+            ("prompt_locality", "locality"),
+            ("prompt_setting", "setting"),
+            ("prompt_topic", "topic"),
+            ("prompt_rationale", "why it matters locally"),
+            ("prompt_source", "source"),
+        ]
+        if not (request.form.get(field) or "").strip()
+    ]
+    if missing:
+        return jsonify({"ok": False, "error": "Please fill in: " + ", ".join(missing) + "."}), 400
+
+    annotation_id, _ = _persist_annotation_record(record, editing_id=session.get("editing_id"))
+    session["editing_id"] = annotation_id
+
+    stored = next(r for r in load_records() if r["id"] == annotation_id)
+    if user.get("role") != "admin" and stored.get("annotator_name") != user.get("username"):
+        abort(403)
+    current = stored.get("prompt_review") or {}
+    if current.get("status") == "approved":
+        return jsonify({"ok": True, "annotation_id": annotation_id, "status": "approved"})
+    if current.get("status") == "rejected":
+        return jsonify({"ok": False, "error": "This prompt was rejected. Start a new annotation for this slot."}), 409
+
+    stored["prompt_review"] = {
+        "status": "pending",
+        "prompt": _base_prompt_text(stored),
+        "submitted_at": datetime.utcnow().isoformat(),
+        "submitted_by": user.get("username", ""),
+        "history": (current.get("history") or []) + ([current] if current.get("status") in ("returned",) else []),
+    }
+    save_record(stored)
+    return jsonify({"ok": True, "annotation_id": annotation_id, "status": "pending"})
 
 
 @app.route("/save-annotation-draft", methods=["POST"])
@@ -1459,6 +1534,59 @@ def admin():
     )
 
 
+@app.route("/admin/prompts")
+@admin_required
+def admin_prompt_queue():
+    status = (request.args.get("status") or "pending").strip()
+    state = (request.args.get("state") or "").strip()
+    records = [
+        r for r in load_records()
+        if ((r.get("prompt_review") or {}).get("status") or "not_submitted") == status
+        and (not state or r.get("state") == state)
+    ]
+    records.sort(key=lambda r: (r.get("prompt_review") or {}).get("submitted_at") or "")
+    counts = Counter(((r.get("prompt_review") or {}).get("status") or "not_submitted") for r in load_records())
+    return render_template(
+        "admin_prompts.html",
+        records=records,
+        status=status,
+        state=state,
+        counts=counts,
+        statuses=PROMPT_STATUSES,
+        states=[s for states in REGION_STATE_MAP.values() for s in states],
+        prompt_detail_fields=PROMPT_DETAIL_FIELDS,
+        info=(request.args.get("info") or "").strip(),
+    )
+
+
+@app.route("/admin/prompts/<annotation_id>", methods=["POST"])
+@admin_required
+def admin_decide_prompt(annotation_id):
+    decision = (request.form.get("decision") or "").strip()
+    comment = (request.form.get("comment") or "").strip()
+    if decision not in ("approved", "returned", "rejected"):
+        abort(400)
+    if decision in ("returned", "rejected") and not comment:
+        return redirect(url_for("admin_prompt_queue", info="Please add a comment when returning or rejecting a prompt."))
+
+    record = next((r for r in load_records() if r.get("id") == annotation_id), None)
+    if not record:
+        abort(404)
+    review = dict(record.get("prompt_review") or {})
+    if review.get("status") != "pending":
+        return redirect(url_for("admin_prompt_queue", info="That prompt is no longer waiting for a decision."))
+
+    review.update({
+        "status": decision,
+        "comment": comment,
+        "decided_by": session["user"].get("username", ""),
+        "decided_at": datetime.utcnow().isoformat(),
+    })
+    record["prompt_review"] = review
+    save_record(record)
+    return redirect(url_for("admin_prompt_queue", info=f"Prompt {decision}."))
+
+
 @app.route("/admin/dashboard-stats")
 @admin_required
 def admin_dashboard_stats():
@@ -1656,9 +1784,18 @@ def generate(model_key):
 
     data = request.json or {}
     prompt = (data.get("prompt") or "").strip()
+    annotation_id = (data.get("annotation_id") or "").strip()
 
     if not prompt:
         return jsonify({"error": "Empty prompt"}), 400
+
+    # Answers may only be generated for a prompt the cultural expert has approved, unchanged.
+    user = session["user"]
+    record = next((r for r in load_records() if r.get("id") == annotation_id), None) if annotation_id else None
+    if not record or (user.get("role") != "admin" and record.get("annotator_name") != user.get("username")):
+        return jsonify({"error": "Submit the prompt for approval first."}), 403
+    if not _prompt_is_approved_for(record, prompt):
+        return jsonify({"error": "This prompt is not approved yet (or was edited after approval)."}), 403
 
     try:
         return jsonify({"text": generate_output(model_key, prompt)})

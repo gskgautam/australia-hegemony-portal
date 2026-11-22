@@ -21,10 +21,13 @@ Open the portal link your coordinator sends you, then:
 1. **Sign up** with the access code from your coordinator, and choose your state or territory.
 2. Read the **Annotator Handbook** (menu: *Annotator Resources*). The **References** page lists the
    six axes with Yes and No examples.
-3. On **Annotate**: write your question, click **Check Similarity**, then **Generate** once for each
-   model. Label every answer on all six axes, flag hallucinations, and write the Ground Truth.
-4. Click **Review Annotation**, then **Confirm & Submit**. Expert feedback appears on your **Load** page.
-5. When items are assigned to you, review your teammates' work under **Review**. First label each
+3. On **Annotate**: write your question and its details (locality, setting, topic, why it matters,
+   source), click **Check Similarity**, then **Submit prompt for approval**.
+4. When your cultural expert approves it (see the status beside the prompt or on **Load**), click
+   **Generate** once for each model. Label every answer on all six axes, flag hallucinations, and
+   write the Ground Truth.
+5. Click **Review Annotation**, then **Confirm & Submit**. Expert feedback appears on your **Load** page.
+6. When items are assigned to you, review your teammates' work under **Review**. First label each
    answer yourself without seeing their labels (these lock), then score their work.
 
 Use **Save Draft** at any time. Never regenerate an answer to get a "better" one.
@@ -111,7 +114,7 @@ Reload the web app after changing the config.
 | Role | Can do |
 |---|---|
 | Annotator | Write and edit their own items, save notes, review teammates' items in their jurisdiction |
-| Admin / cultural expert | See all items, mark them Accepted, Needs Restructuring or Rejected with comments, export CSV, see review statistics |
+| Admin / cultural expert | Approve, return or reject prompts before generation (*Prompt Approvals*); see all items, mark them Accepted, Needs Restructuring or Rejected with comments; export CSV; see review statistics and agreement |
 
 ### Where data is kept
 
@@ -150,8 +153,6 @@ raw agreement and Fleiss' κ. It can be filtered by state or territory, and has 
 - Confirm the OpenRouter model IDs with a real key, especially `qwen/qwen3.8-27b`.
 - Export in the consortium's upload format once the updated `dataset_format.json` is published.
 - Not yet in the portal, though the Australian guidelines include them:
-  - expert approval of a prompt *before* answers are generated;
-  - prompt details (prompt ID, locality, topic, why it matters, source);
   - a "Needs review" flag;
   - per-axis confidence scores;
   - separate logins for cultural experts, limited to their own state or territory;

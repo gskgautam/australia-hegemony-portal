@@ -1,0 +1,107 @@
+{% extends "layout/base.html" %}
+
+{% block title %}Prompt Approvals – Admin{% endblock %}
+
+{% block content %}
+{% set status_labels = {
+  "pending": "Waiting", "approved": "Approved", "returned": "Returned",
+  "rejected": "Rejected", "not_submitted": "Not submitted"
+} %}
+{% set detail_labels = {
+  "slot_id": "Slot", "locality": "Locality", "setting": "Setting",
+  "topic": "Topic", "rationale": "Why it matters locally", "source": "Source"
+} %}
+<section class="section">
+  <div class="container" style="max-width: 1000px;">
+    <h1 class="title">Prompt approvals</h1>
+    <p class="subtitle">
+      Check each prompt <strong>before</strong> any model answers are generated: is it neutral, with no
+      persona or built-in judgement, relevant to the jurisdiction, and backed by a credible source?
+    </p>
+
+    {% if info %}<div class="notification is-info is-light">{{ info }}</div>{% endif %}
+
+    <div class="tabs is-small">
+      <ul>
+        {% for s in ["pending", "returned", "approved", "rejected"] %}
+          <li class="{% if s == status %}is-active{% endif %}">
+            <a href="{{ url_for('admin_prompt_queue', status=s, state=state) }}">
+              {{ status_labels[s] }} ({{ counts.get(s, 0) }})
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+
+    <form method="GET" class="field has-addons mb-5">
+      <input type="hidden" name="status" value="{{ status }}">
+      <div class="control">
+        <div class="select is-small">
+          <select name="state">
+            <option value="">All states and territories</option>
+            {% for s in states %}<option {% if s == state %}selected{% endif %}>{{ s }}</option>{% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="control"><button class="button is-small is-link" type="submit">Filter</button></div>
+    </form>
+
+    {% if not records %}
+      <p class="has-text-grey">No prompts in this list.</p>
+    {% endif %}
+
+    {% for r in records %}
+    {% set review = r.prompt_review or {} %}
+    {% set details = r.prompt_details or {} %}
+    <div class="box">
+      <p class="is-size-7 has-text-grey mb-2">
+        {{ r.state }} · {{ r.annotator_name }}
+        {% if review.submitted_at %} · submitted {{ review.submitted_at[:16].replace("T", " ") }} UTC{% endif %}
+      </p>
+      <p class="is-size-5 mb-3"><strong>{{ (r.prompts or {}).base }}</strong></p>
+
+      <table class="table is-fullwidth is-size-7 mb-3">
+        <tbody>
+          {% for field in prompt_detail_fields %}
+          <tr>
+            <th width="22%">{{ detail_labels.get(field, field) }}</th>
+            <td style="white-space: pre-wrap;">{{ details.get(field) or "—" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      {% if review.history %}
+        <details class="mb-3 is-size-7">
+          <summary>Earlier decisions ({{ review.history|length }})</summary>
+          {% for h in review.history %}
+            <p class="mt-1"><strong>{{ status_labels.get(h.status, h.status) }}</strong>: "{{ h.prompt }}". {{ h.comment }}</p>
+          {% endfor %}
+        </details>
+      {% endif %}
+
+      {% if review.status == "pending" %}
+      <form method="POST" action="{{ url_for('admin_decide_prompt', annotation_id=r.id) }}">
+        <div class="field">
+          <textarea class="textarea is-small" name="comment" rows="2"
+                    placeholder="Comment for the annotator (required when returning or rejecting)"></textarea>
+        </div>
+        <div class="buttons">
+          <button class="button is-success is-small" name="decision" value="approved">Approve</button>
+          <button class="button is-warning is-small" name="decision" value="returned">Return for changes</button>
+          <button class="button is-danger is-small is-light" name="decision" value="rejected"
+                  onclick="return confirm('Reject this prompt? The annotator will need to write a new one for this slot.');">Reject</button>
+        </div>
+      </form>
+      {% else %}
+        <p class="is-size-7">
+          <strong>{{ status_labels.get(review.status, review.status) }}</strong>
+          {% if review.decided_by %}by {{ review.decided_by }}{% endif %}
+          {% if review.comment %}: {{ review.comment }}{% endif %}
+        </p>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

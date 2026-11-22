@@ -79,10 +79,11 @@ async function generateOutput(model, kind) {
 
   // 3. Call backend
   try {
+    const annotationId = (document.getElementById("current_annotation_id") || {}).value || "";
     const response = await fetch(`/generate/${model}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt })
+      body: JSON.stringify({ prompt, annotation_id: annotationId })
     });
 
     const data = await response.json();
@@ -290,6 +291,38 @@ function showSaveStatus(message, isError = false) {
     badge.classList.add("is-hidden");
   }, 2800);
 }
+
+async function submitPromptForApproval() {
+  const form = document.getElementById("annotation_form");
+  const btn = document.getElementById("submit_prompt_btn");
+  if (!form) return;
+  if (!confirm("Submit this prompt to your cultural expert? You can generate answers once it is approved.")) return;
+  if (btn) { btn.disabled = true; btn.textContent = "Submitting..."; }
+  try {
+    const response = await fetch("/prompt/submit", { method: "POST", body: new FormData(form) });
+    const payload = await response.json();
+    if (!response.ok || !payload.ok) throw new Error(payload.error || "Could not submit the prompt.");
+    window.location.reload();
+  } catch (err) {
+    alert(err.message);
+    if (btn) { btn.disabled = false; btn.textContent = "Submit prompt for approval"; }
+  }
+}
+
+// If the prompt text changes after approval, lock Generate again until it is re-approved.
+document.addEventListener("DOMContentLoaded", () => {
+  const box = document.getElementById("prompt_status_box");
+  const promptInput = document.getElementById("base_prompt_input");
+  if (!box || !promptInput || box.dataset.status !== "approved") return;
+  const approved = (box.dataset.approvedPrompt || "").trim();
+  const sync = () => {
+    const changed = promptInput.value.trim() !== approved;
+    document.querySelectorAll(".generate-btn").forEach((b) => { b.disabled = changed; });
+    document.getElementById("prompt_changed_warning").classList.toggle("is-hidden", !changed);
+  };
+  promptInput.addEventListener("input", sync);
+  sync();
+});
 
 async function saveAnnotationDraft() {
   const form = document.getElementById("annotation_form");

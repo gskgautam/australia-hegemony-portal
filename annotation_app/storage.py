@@ -12,7 +12,7 @@ import uuid
 from contextlib import closing
 from datetime import datetime
 
-from config import COUNTRY, DB_PATH, HEADERS, HEGEMONY_AXES, MODEL_KEYS, PROMPT_TYPES
+from config import COUNTRY, DB_PATH, HEADERS, HEGEMONY_AXES, MODEL_KEYS, PROMPT_DETAIL_FIELDS, PROMPT_TYPES
 
 
 # =====================================================
@@ -148,6 +148,11 @@ def build_record(form):
         "region": form["region"],
         "state": form["state"],
         "prompts": {"base": form.get("base_prompt")},
+        "prompt_details": {
+            field: (form.get(f"prompt_{field}") or "").strip() for field in PROMPT_DETAIL_FIELDS
+        },
+        # Overwritten from the stored record on save; only the expert changes it.
+        "prompt_review": {"status": "not_submitted"},
         "outputs": outputs,
         "ground_truth": form.get("ground_truth"),
         "references": form.get("references", ""),
@@ -171,6 +176,10 @@ def json_to_row(record):
         record.get("state", ""),
         (record.get("prompts") or {}).get("base", ""),
     ]
+    details = record.get("prompt_details") or {}
+    row += [details.get(field, "") for field in PROMPT_DETAIL_FIELDS]
+    review = record.get("prompt_review") or {}
+    row += [review.get("status", "not_submitted"), review.get("comment", "")]
 
     outputs = record.get("outputs") or {}
     for model_key in MODEL_KEYS:
