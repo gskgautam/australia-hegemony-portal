@@ -23,11 +23,6 @@ ONBOARDED_ANNOTATOR_USERNAMES = ["admin", *ONBOARDED_ANNOTATOR_USERNAMES_STATES.
 # Inter-annotator review: 3 annotators per jurisdiction; each item is reviewed
 # blind by the other two. Keys are lower-case state names.
 # "seed" makes the review sampling reproducible.
-# "per_annotator_quota" is how many of each annotator's accepted items are sent for
-# peer review; set it to at least the number they write (about 21) to review them all.
-# How many teammates review each item. 2 = both other annotators (needed for agreement).
-REVIEWERS_PER_ITEM = 2
-
 STATE_REVIEW_ASSIGNMENT_CONFIGS = {
 	# "new south wales": {
 	# 	"seed": "iaa-nsw-v1",
